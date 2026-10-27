@@ -24,7 +24,7 @@
 <div class="confirm-modal" id="confirmModal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle"><div class="confirm-card"><div class="confirm-icon">✓</div><h3 id="confirmTitle">¡Configuración aplicada!</h3><p>Los ajustes se guardaron correctamente y el marcador se ha reiniciado.</p><button type="button" class="confirm-ok" id="confirmOk">ACEPTAR</button></div></div><script>
 const state={points:[0,0],games:[0,0],sets:[0,0],server:0,tb:false,tbPoints:[0,0],finished:false,setHistory:[],history:[]};const $=id=>document.getElementById(id);const pv=[0,15,30,40];
 function cfg(){return{deuce:$('deuce').value,games:+$('games').value,tb:+$('tb').value,sets:+$('sets').value}}function names(){return[$('name1').value.trim()||'Jugador 1',$('name2').value.trim()||'Jugador 2']}
-function snap(){state.history.push({points:[...state.points],games:[...state.games],sets:[...state.sets],server:state.server,tb:state.tb,tbPoints:[...state.tbPoints],finished:state.finished,setHistory:state.setHistory.map(x=>({...x,score:[...x.score],tbScore:x.tbScore?[...x.tbScore]:null}))});if(state.history.length>100)state.history.shift()}
+function snap(){const sets=Array.isArray(state.setHistory)?state.setHistory:[];state.history.push({points:[...state.points],games:[...state.games],sets:[...state.sets],server:state.server,tb:state.tb,tbPoints:[...state.tbPoints],finished:state.finished,setHistory:sets.map(x=>({...x,score:Array.isArray(x.score)?[...x.score]:[0,0],tbScore:Array.isArray(x.tbScore)?[...x.tbScore]:null}))});if(state.history.length>100)state.history.shift()}
 function reset(){state.points=[0,0];state.games=[0,0];state.sets=[0,0];state.server=0;state.tb=false;state.tbPoints=[0,0];state.finished=false;state.setHistory=[];state.history=[];render()}
 function finishSet(w){state.setHistory.push({number:state.setHistory.length+1,score:[...state.games],winner:w,tbScore:null});state.sets[w]++;state.games=[0,0];state.points=[0,0];state.tb=false;state.tbPoints=[0,0];state.server=1-state.server;if(state.sets[w]>=cfg().sets)state.finished=true}
 function winGame(w){const c=cfg();state.games[w]++;state.points=[0,0];state.server=1-state.server;if(c.tb&&state.games[0]===c.games&&state.games[1]===c.games){state.tb=true;state.tbPoints=[0,0];return}if((state.games[0]>=c.games||state.games[1]>=c.games)&&Math.abs(state.games[0]-state.games[1])>=2)finishSet(w)}
@@ -56,25 +56,36 @@ window.__applyRemoteMatch=(data)=>{if(!data)return;try{const c=data.config||{};i
 $('add1').onclick=()=>point(0);
 $('add2').onclick=()=>point(1);
 $('undo').onclick=async()=>{
-  if(!state.history.length){
+  if(!Array.isArray(state.history)||state.history.length===0){
     $('syncStatus').textContent='● No hay acciones anteriores para deshacer';
     return;
   }
   const previous=state.history.pop();
+  if(!previous || typeof previous!=='object'){
+    $('syncStatus').textContent='● El historial no contiene un estado válido';
+    return;
+  }
+  const safePair=(value,fallback=[0,0])=>Array.isArray(value)?[value[0]??fallback[0],value[1]??fallback[1]]:[...fallback];
+  const previousSets=Array.isArray(previous.setHistory)?previous.setHistory:[];
   Object.assign(state,{
-    points:[...previous.points],
-    games:[...previous.games],
-    sets:[...previous.sets],
-    server:previous.server,
-    tb:previous.tb,
-    tbPoints:[...previous.tbPoints],
-    finished:previous.finished,
-    setHistory:previous.setHistory.map(item=>({...item,score:[...item.score],tbScore:item.tbScore?[...item.tbScore]:null}))
+    points:safePair(previous.points),
+    games:safePair(previous.games),
+    sets:safePair(previous.sets),
+    server:previous.server===1?1:0,
+    tb:!!previous.tb,
+    tbPoints:safePair(previous.tbPoints),
+    finished:!!previous.finished,
+    setHistory:previousSets.map(item=>({
+      ...item,
+      score:safePair(item && item.score),
+      tbScore:Array.isArray(item && item.tbScore)?[...item.tbScore]:null
+    }))
   });
-  // Render without triggering a second, competing write. Publish the restored state once.
+  // Render without triggering a second write; then publish the restored state once.
   render(false);
   if(window.__publishMatch){
-    await window.__publishMatch(true);
+    try { await window.__publishMatch(true); }
+    catch(error) { console.error('No se pudo sincronizar Deshacer con Firebase:',error); }
   }
 };
 $('serveBtn').onclick=()=>{if(!state.finished){state.server=1-state.server;render()}};
