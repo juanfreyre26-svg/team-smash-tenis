@@ -24,12 +24,30 @@
 <div class="confirm-modal" id="confirmModal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle"><div class="confirm-card"><div class="confirm-icon">✓</div><h3 id="confirmTitle">¡Configuración aplicada!</h3><p>Los ajustes se guardaron correctamente y el marcador se ha reiniciado.</p><button type="button" class="confirm-ok" id="confirmOk">ACEPTAR</button></div></div><script>
 const state={points:[0,0],games:[0,0],sets:[0,0],server:0,tb:false,tbPoints:[0,0],finished:false,setHistory:[],history:[]};const $=id=>document.getElementById(id);const pv=[0,15,30,40];
 function cfg(){return{deuce:$('deuce').value,games:+$('games').value,tb:+$('tb').value,sets:+$('sets').value}}function names(){return[$('name1').value.trim()||'Jugador 1',$('name2').value.trim()||'Jugador 2']}
-function snap(){const sets=Array.isArray(state.setHistory)?state.setHistory:[];state.history.push({points:[...state.points],games:[...state.games],sets:[...state.sets],server:state.server,tb:state.tb,tbPoints:[...state.tbPoints],finished:state.finished,setHistory:sets.map(x=>({...x,score:Array.isArray(x.score)?[...x.score]:[0,0],tbScore:Array.isArray(x.tbScore)?[...x.tbScore]:null}))});if(state.history.length>100)state.history.shift()}
+function snap(){
+  // Guarda el estado ANTERIOR al punto. El historial también se publica en Firebase.
+  if (!Array.isArray(state.history)) state.history = [];
+  state.history.push({
+    points: [...state.points],
+    games: [...state.games],
+    sets: [...state.sets],
+    server: state.server,
+    tb: !!state.tb,
+    tbPoints: [...state.tbPoints],
+    finished: !!state.finished,
+    setHistory: (Array.isArray(state.setHistory) ? state.setHistory : []).map(x => ({
+      ...x,
+      score: Array.isArray(x.score) ? [...x.score] : [0, 0],
+      tbScore: Array.isArray(x.tbScore) ? [...x.tbScore] : null
+    }))
+  });
+  if (state.history.length > 30) state.history.shift();
+}
 function reset(){state.points=[0,0];state.games=[0,0];state.sets=[0,0];state.server=0;state.tb=false;state.tbPoints=[0,0];state.finished=false;state.setHistory=[];state.history=[];render()}
 function finishSet(w){state.setHistory.push({number:state.setHistory.length+1,score:[...state.games],winner:w,tbScore:null});state.sets[w]++;state.games=[0,0];state.points=[0,0];state.tb=false;state.tbPoints=[0,0];state.server=1-state.server;if(state.sets[w]>=cfg().sets)state.finished=true}
 function winGame(w){const c=cfg();state.games[w]++;state.points=[0,0];state.server=1-state.server;if(c.tb&&state.games[0]===c.games&&state.games[1]===c.games){state.tb=true;state.tbPoints=[0,0];return}if((state.games[0]>=c.games||state.games[1]>=c.games)&&Math.abs(state.games[0]-state.games[1])>=2)finishSet(w)}
 function point(i){if(state.finished)return;snap();const c=cfg();if(state.tb){state.tbPoints[i]++;if(state.tbPoints[i]>=c.tb&&state.tbPoints[i]-state.tbPoints[1-i]>=2){const tbScore=[...state.tbPoints];state.games[i]++;finishSet(i);state.setHistory[state.setHistory.length-1].tbScore=tbScore;}render();return}if(c.deuce==='decisive'&&state.points[0]===3&&state.points[1]===3){winGame(i);render();return}if(c.deuce==='advantage'){if(state.points[0]===4){if(i===0)winGame(0);else state.points[0]=3;render();return}if(state.points[1]===4){if(i===1)winGame(1);else state.points[1]=3;render();return}if(state.points[0]===3&&state.points[1]===3){state.points[i]=4;render();return}}state.points[i]++;if(state.points[i]>=4)winGame(i);render()}
-function render(shouldPublish=true){const n=names(),c=cfg();for(const [idx,id] of [[0,'n1'],[1,'n2']]){const el=$(id);el.replaceChildren();const parts=n[idx].split('/').map(x=>x.trim()).filter(Boolean);(parts.length?parts:[n[idx]]).forEach(part=>{const line=document.createElement('span');line.className='name-line';line.textContent=part;el.appendChild(line)});const s=document.createElement('span');s.id=idx===0?'s1':'s2';s.className='server';s.textContent='🎾';s.title='Jugador al saque';s.setAttribute('aria-label','Jugador al saque');s.style.display=state.server===idx?'inline':'none';el.appendChild(s)}$('hname1').textContent=n[0];$('hname2').textContent=n[1];$('add1').textContent='+ PUNTO '+n[0].toUpperCase();$('add2').textContent='+ PUNTO '+n[1].toUpperCase();$('set1').textContent=state.sets[0];$('set2').textContent=state.sets[1];$('game1').textContent=state.games[0];$('game2').textContent=state.games[1];$('serve').textContent='SAQUE: '+n[state.server].toUpperCase();if(state.tb){$('pt1').textContent=state.tbPoints[0];$('pt2').textContent=state.tbPoints[1];$('message').textContent='🔥 TIE-BREAK A '+c.tb}else{$('pt1').textContent=state.points[0]===4?'AD':pv[state.points[0]]||0;$('pt2').textContent=state.points[1]===4?'AD':pv[state.points[1]]||0;const d=state.points[0]===3&&state.points[1]===3;$('message').textContent=d?(c.deuce==='decisive'?'⚡ 40 - 40 · PUNTO DECISIVO':'⚡ DEUCE · 40 - 40'):'🎾 TEAM SMASH TENIS'} $('status').textContent=state.finished?'🏆 PARTIDO FINALIZADO':state.tb?'🔥 TIE-BREAK':'● PARTIDO EN JUEGO';$('brandStatus').textContent=state.finished?'🏆 PARTIDO FINALIZADO':state.tb?'TIE-BREAK EN JUEGO':'TRANSMISIÓN · EN VIVO';$('add1').disabled=state.finished;$('add2').disabled=state.finished;$('rules').textContent=c.games+' games · '+(c.tb?'TB '+c.tb:'Sin TB')+' · '+(c.deuce==='decisive'?'Punto decisivo':'Ventaja');$('best').textContent='Mejor de '+c.sets;const box=$('setHistory');box.innerHTML='';if(!state.setHistory.length){box.innerHTML='<div style="color:#91a6bd;font-size:12px">Aún no hay sets terminados.</div>'}else state.setHistory.forEach(x=>{const r=document.createElement('div');r.className='set-row';r.innerHTML='<div>Set '+x.number+'</div><div>'+x.score[0]+(x.winner===0?' 🏆':'')+'</div><div>'+x.score[1]+(x.winner===1?' 🏆':'')+'</div>'+(x.tbScore?'<div style="grid-column:1/-1;color:#91a6bd;font-size:11px;margin-top:3px">Tie-break: '+x.tbScore[0]+'-'+x.tbScore[1]+'</div>':'');box.appendChild(r)});if(state.finished){const w=state.sets[0]>state.sets[1]?0:1;$('final').style.display='block';$('final').innerHTML='🏆 GANADOR: '+n[w]+'<small>Resultado final: '+state.sets[0]+' - '+state.sets[1]+' · '+state.setHistory.map(x=>x.score[0]+'-'+x.score[1]+(x.tbScore?' ('+x.tbScore[0]+'-'+x.tbScore[1]+')':'')).join(' | ')+'</small>'}else $('final').style.display='none';if(shouldPublish && window.__publishMatch) window.__publishMatch(); }
+function render(publishAfter=true){const n=names(),c=cfg();for(const [idx,id] of [[0,'n1'],[1,'n2']]){const el=$(id);el.replaceChildren();const parts=n[idx].split('/').map(x=>x.trim()).filter(Boolean);(parts.length?parts:[n[idx]]).forEach(part=>{const line=document.createElement('span');line.className='name-line';line.textContent=part;el.appendChild(line)});const s=document.createElement('span');s.id=idx===0?'s1':'s2';s.className='server';s.textContent='🎾';s.title='Jugador al saque';s.setAttribute('aria-label','Jugador al saque');s.style.display=state.server===idx?'inline':'none';el.appendChild(s)}$('hname1').textContent=n[0];$('hname2').textContent=n[1];$('add1').textContent='+ PUNTO '+n[0].toUpperCase();$('add2').textContent='+ PUNTO '+n[1].toUpperCase();$('set1').textContent=state.sets[0];$('set2').textContent=state.sets[1];$('game1').textContent=state.games[0];$('game2').textContent=state.games[1];$('serve').textContent='SAQUE: '+n[state.server].toUpperCase();if(state.tb){$('pt1').textContent=state.tbPoints[0];$('pt2').textContent=state.tbPoints[1];$('message').textContent='🔥 TIE-BREAK A '+c.tb}else{$('pt1').textContent=state.points[0]===4?'AD':pv[state.points[0]]||0;$('pt2').textContent=state.points[1]===4?'AD':pv[state.points[1]]||0;const d=state.points[0]===3&&state.points[1]===3;$('message').textContent=d?(c.deuce==='decisive'?'⚡ 40 - 40 · PUNTO DECISIVO':'⚡ DEUCE · 40 - 40'):'🎾 TEAM SMASH TENIS'} $('status').textContent=state.finished?'🏆 PARTIDO FINALIZADO':state.tb?'🔥 TIE-BREAK':'● PARTIDO EN JUEGO';$('brandStatus').textContent=state.finished?'🏆 PARTIDO FINALIZADO':state.tb?'TIE-BREAK EN JUEGO':'TRANSMISIÓN · EN VIVO';$('add1').disabled=state.finished;$('add2').disabled=state.finished;$('rules').textContent=c.games+' games · '+(c.tb?'TB '+c.tb:'Sin TB')+' · '+(c.deuce==='decisive'?'Punto decisivo':'Ventaja');$('best').textContent='Mejor de '+c.sets;const box=$('setHistory');box.innerHTML='';if(!state.setHistory.length){box.innerHTML='<div style="color:#91a6bd;font-size:12px">Aún no hay sets terminados.</div>'}else state.setHistory.forEach(x=>{const r=document.createElement('div');r.className='set-row';r.innerHTML='<div>Set '+x.number+'</div><div>'+x.score[0]+(x.winner===0?' 🏆':'')+'</div><div>'+x.score[1]+(x.winner===1?' 🏆':'')+'</div>'+(x.tbScore?'<div style="grid-column:1/-1;color:#91a6bd;font-size:11px;margin-top:3px">Tie-break: '+x.tbScore[0]+'-'+x.tbScore[1]+'</div>':'');box.appendChild(r)});if(state.finished){const w=state.sets[0]>state.sets[1]?0:1;$('final').style.display='block';$('final').innerHTML='🏆 GANADOR: '+n[w]+'<small>Resultado final: '+state.sets[0]+' - '+state.sets[1]+' · '+state.setHistory.map(x=>x.score[0]+'-'+x.score[1]+(x.tbScore?' ('+x.tbScore[0]+'-'+x.tbScore[1]+')':'')).join(' | ')+'</small>'}else $('final').style.display='none';if(publishAfter && window.__publishMatch)window.__publishMatch() }
 
 function shareText(){
  const n=names();
@@ -51,41 +69,64 @@ async function shareMatch(){
 
 
 window.__getMatchData=()=>({state:JSON.parse(JSON.stringify(state)),config:cfg(),names:names()});
-window.__applyRemoteMatch=(data)=>{if(!data)return;try{const c=data.config||{};if(c.deuce)$('deuce').value=c.deuce;if(c.games)$('games').value=String(c.games);if(c.tb!==undefined)$('tb').value=String(c.tb);if(c.sets)$('sets').value=String(c.sets);const n=data.names||[];if(n[0])$('name1').value=n[0];if(n[1])$('name2').value=n[1];if(data.state){const x=data.state;Object.assign(state,{points:x.points||[0,0],games:x.games||[0,0],sets:x.sets||[0,0],server:x.server||0,tb:!!x.tb,tbPoints:x.tbPoints||[0,0],finished:!!x.finished,setHistory:x.setHistory||[],history:x.history||[]});}render();}catch(e){console.error('No se pudo aplicar el marcador remoto',e)}};
+window.__applyRemoteMatch=(data)=>{
+  if(!data)return;
+  try{
+    const c=data.config||{};
+    if(c.deuce)$('deuce').value=c.deuce;
+    if(c.games!==undefined)$('games').value=String(c.games);
+    if(c.tb!==undefined)$('tb').value=String(c.tb);
+    if(c.sets!==undefined)$('sets').value=String(c.sets);
+    const n=data.names||[];
+    if(n[0])$('name1').value=n[0];
+    if(n[1])$('name2').value=n[1];
+    if(data.state){
+      const x=data.state;
+      Object.assign(state,{
+        points:Array.isArray(x.points)?[...x.points]:[0,0],
+        games:Array.isArray(x.games)?[...x.games]:[0,0],
+        sets:Array.isArray(x.sets)?[...x.sets]:[0,0],
+        server:Number.isInteger(x.server)?x.server:0,
+        tb:!!x.tb,
+        tbPoints:Array.isArray(x.tbPoints)?[...x.tbPoints]:[0,0],
+        finished:!!x.finished,
+        setHistory:Array.isArray(x.setHistory)?x.setHistory.map(a=>({...a,score:Array.isArray(a.score)?[...a.score]:[0,0],tbScore:Array.isArray(a.tbScore)?[...a.tbScore]:null})):[],
+        history:Array.isArray(x.history)?x.history.map(a=>({
+          points:Array.isArray(a.points)?[...a.points]:[0,0],
+          games:Array.isArray(a.games)?[...a.games]:[0,0],
+          sets:Array.isArray(a.sets)?[...a.sets]:[0,0],
+          server:Number.isInteger(a.server)?a.server:0,
+          tb:!!a.tb,
+          tbPoints:Array.isArray(a.tbPoints)?[...a.tbPoints]:[0,0],
+          finished:!!a.finished,
+          setHistory:Array.isArray(a.setHistory)?a.setHistory.map(s=>({...s,score:Array.isArray(s.score)?[...s.score]:[0,0],tbScore:Array.isArray(s.tbScore)?[...s.tbScore]:null})):[]
+        })):[]
+      });
+    }
+    render(false);
+  }catch(e){console.error('No se pudo aplicar el marcador remoto',e)}
+};
 
 $('add1').onclick=()=>point(0);
 $('add2').onclick=()=>point(1);
 $('undo').onclick=async()=>{
-  if(!Array.isArray(state.history)||state.history.length===0){
-    $('syncStatus').textContent='● No hay acciones anteriores para deshacer';
+  if(!Array.isArray(state.history) || state.history.length===0){
+    alert('No hay acciones anteriores para deshacer. Registra un punto desde este dispositivo de control e inténtalo de nuevo.');
     return;
   }
   const previous=state.history.pop();
-  if(!previous || typeof previous!=='object'){
-    $('syncStatus').textContent='● El historial no contiene un estado válido';
-    return;
-  }
-  const safePair=(value,fallback=[0,0])=>Array.isArray(value)?[value[0]??fallback[0],value[1]??fallback[1]]:[...fallback];
-  const previousSets=Array.isArray(previous.setHistory)?previous.setHistory:[];
-  Object.assign(state,{
-    points:safePair(previous.points),
-    games:safePair(previous.games),
-    sets:safePair(previous.sets),
-    server:previous.server===1?1:0,
-    tb:!!previous.tb,
-    tbPoints:safePair(previous.tbPoints),
-    finished:!!previous.finished,
-    setHistory:previousSets.map(item=>({
-      ...item,
-      score:safePair(item && item.score),
-      tbScore:Array.isArray(item && item.tbScore)?[...item.tbScore]:null
-    }))
-  });
-  // Render without triggering a second write; then publish the restored state once.
+  state.points=Array.isArray(previous.points)?[...previous.points]:[0,0];
+  state.games=Array.isArray(previous.games)?[...previous.games]:[0,0];
+  state.sets=Array.isArray(previous.sets)?[...previous.sets]:[0,0];
+  state.server=Number.isInteger(previous.server)?previous.server:0;
+  state.tb=!!previous.tb;
+  state.tbPoints=Array.isArray(previous.tbPoints)?[...previous.tbPoints]:[0,0];
+  state.finished=!!previous.finished;
+  state.setHistory=Array.isArray(previous.setHistory)?previous.setHistory.map(a=>({...a,score:Array.isArray(a.score)?[...a.score]:[0,0],tbScore:Array.isArray(a.tbScore)?[...a.tbScore]:null})):[];
   render(false);
   if(window.__publishMatch){
-    try { await window.__publishMatch(true); }
-    catch(error) { console.error('No se pudo sincronizar Deshacer con Firebase:',error); }
+    try{await window.__publishMatch(true);}
+    catch(e){console.error('No se pudo guardar la acción Deshacer',e);alert('No se pudo guardar el marcador deshecho en Firebase.');}
   }
 };
 $('serveBtn').onclick=()=>{if(!state.finished){state.server=1-state.server;render()}};
@@ -106,61 +147,40 @@ const firebaseConfig = {
 };
 const app=initializeApp(firebaseConfig), auth=getAuth(app), db=getDatabase(app), matchRef=ref(db,'matches/current');
 const overlay=document.getElementById('loginOverlay'), form=document.getElementById('loginForm'), err=document.getElementById('loginError'), status=document.getElementById('syncStatus');
-let ready=false, applying=false, lastWrite='';
+let ready=false, applying=false, lastWrite='', writeQueue=Promise.resolve(), unsubscribeMatch=null;
 form.addEventListener('submit',async e=>{e.preventDefault();err.textContent='';try{await signInWithEmailAndPassword(auth,document.getElementById('loginEmail').value.trim(),document.getElementById('loginPassword').value)}catch(error){err.textContent='No se pudo iniciar sesión. Revisa el correo, la contraseña y que Email/Password esté habilitado.'}});
-let unsubscribeMatch = null;
 onAuthStateChanged(auth,user=>{
  if(unsubscribeMatch){unsubscribeMatch();unsubscribeMatch=null;}
- ready=false;
- applying=false;
- lastWrite='';
- if(!user){
-  window.__publishMatch=null;
-  overlay.style.display='flex';
-  status.textContent='● Inicia sesión para controlar';
-  return;
- }
- overlay.style.display='none';
- status.textContent='● Autenticado · sincronizando…';
- unsubscribeMatch=onValue(matchRef,snap=>{
-  if(!snap.exists()){
-   ready=true;
-   status.textContent='● En línea · marcador listo';
-   window.__publishMatch=publish;
-   publish(true);
-   return;
-  }
-  applying=true;
-  window.__applyRemoteMatch(snap.val());
-  // Keep the current remote signature so the next render doesn't echo-write it.
-  const remoteData=window.__getMatchData();
-  lastWrite=JSON.stringify(remoteData);
-  applying=false;
-  ready=true;
-  status.textContent='● Firebase conectado · en vivo';
-  window.__publishMatch=publish;
- },error=>{
-  applying=false;
-  status.textContent='Error de lectura: revisa las reglas de Firebase';
-  console.error('Error leyendo marcador:',error);
- });
+ if(!user){ready=false;window.__publishMatch=null;overlay.style.display='flex';status.textContent='● Inicia sesión para controlar';return;}
+ overlay.style.display='none';status.textContent='● Autenticado · sincronizando…';
+ unsubscribeMatch=onValue(matchRef,snapshot=>{
+   if(!snapshot.exists()){
+     ready=true;status.textContent='● En línea · marcador listo';window.__publishMatch=publish;publish(true);return;
+   }
+   applying=true;
+   window.__applyRemoteMatch(snapshot.val());
+   applying=false;ready=true;status.textContent='● Firebase conectado · en vivo';window.__publishMatch=publish;
+ },error=>{applying=false;status.textContent='Error de lectura: revisa las reglas de Firebase';console.error(error)});
 });
-
-async function publish(force=false){
- if(!ready||applying||!auth.currentUser||!window.__getMatchData)return;
- const payload=window.__getMatchData();
- const signature=JSON.stringify(payload);
- if(!force && signature===lastWrite)return;
- payload.updatedAt=Date.now();
- try{
-  await set(matchRef,payload);
-  lastWrite=signature;
-  status.textContent='● Guardado en Firebase · en vivo';
- }catch(e){
-  status.textContent='Error al guardar: revisa las reglas';
-  console.error('Error guardando marcador:',e);
-  throw e;
- }
+function publish(force=false){
+  if(!ready||applying||!auth.currentUser||!window.__getMatchData)return Promise.resolve();
+  const payload=window.__getMatchData();
+  const signature=JSON.stringify(payload);
+  if(!force && signature===lastWrite)return Promise.resolve();
+  payload.updatedAt=Date.now();
+  const doWrite=async()=>{
+    try{
+      await set(matchRef,payload);
+      lastWrite=signature;
+      status.textContent='● Guardado en Firebase · en vivo';
+    }catch(e){
+      status.textContent='Error al guardar: revisa las reglas';
+      console.error('Error al guardar el marcador en Firebase:',e);
+      throw e;
+    }
+  };
+  writeQueue=writeQueue.then(doWrite,doWrite);
+  return writeQueue;
 }
 </script>
 </body></html>
